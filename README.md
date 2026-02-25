@@ -26,7 +26,7 @@ AstrBot 的网络工具插件，使用 Uapi 提供 WHOIS 查询、DNS 查询及 
 |Data | Description | Example |
 |---|---|---|
 | `/whois <域名>` | 查询域名 WHOIS 信息 | `/whois google.com` |
-| `/DNS <域名>` | 查询域名 DNS 解析记录 | `/DNS cn.bing.com` |
+| `/dns <域名> [记录类型]` | 查询域名 DNS 解析记录 | `/dns cn.bing.com A` |
 | `/ping <主机>` | Ping 主机检测连通性 | `/ping 8.8.8.8` |
 
 ## 鸣谢
