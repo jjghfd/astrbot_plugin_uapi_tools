@@ -263,15 +263,13 @@ class UapiToolsPlugin(Star):
         return self._process_result(result, f"🔍 WHOIS 查询结果 ({domain}):")
 
     # ---------------- DNS ----------------
-    @filter.command("DNS", alias=["dns"])
+    @filter.command("dns")
     async def dns_cmd(
         self, event: AstrMessageEvent, domain: str = "", record_type: str = "A"
     ):
         """查询域名 DNS 解析记录"""
         if not domain:
-            yield event.plain_result(
-                "请输入域名，例如：/DNS cn.bing.com A 或 /dns cn.bing.com A"
-            )
+            yield event.plain_result("请输入域名，例如：/dns cn.bing.com A")
             return
         result = await self._get_dns(domain, record_type)
 
@@ -367,15 +365,19 @@ class UapiToolsPlugin(Star):
         return self._process_result(result, f"📶 Ping 检测结果 ({host}):")
 
     # ---------------- Help ----------------
-    @filter.command("help", alias=["h", "?"])
-    async def help_cmd(self, event: AstrMessageEvent):
+    @filter.command("uapi")
+    async def help_cmd(self, event: AstrMessageEvent, subcommand: str = "help"):
         """查看帮助信息"""
+        if subcommand != "help":
+            yield event.plain_result("请使用 /uapi help 查看帮助信息")
+            return
+
         help_text = """
-🔍 可用命令：
+🔍 UAPI 工具命令：
 /whois <domain> - 查询域名 WHOIS 信息，例如：/whois google.com
 /dns <domain> [record_type] - 查询域名 DNS 解析记录，例如：/dns cn.bing.com A
   支持的记录类型：A, AAAA, CNAME, MX, TXT, NS, SOA, PTR, SRV, CAA, NAPTR
 /ping <host> - Ping 主机检测连通性，例如：/ping cn.bing.com
-/help - 查看此帮助信息
+/uapi help - 查看此帮助信息
         """
         yield event.plain_result(help_text)
