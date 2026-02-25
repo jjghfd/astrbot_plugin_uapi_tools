@@ -1,1 +1,255 @@
-{\n  "key_translations": {\n    "type": "object",\n    "description": "Mapping of Chinese translations for keys.",\n    "hint": "Use the key as the object field to translate relevant strings.",\n    "properties": {\n      "key": {\n        "type": "string",\n        "description": "The original key for translation.",\n        "hint": "Enter the key in English."\n      },\n      "translation": {\n        "type": "string",\n        "description": "The Chinese translation of the key.",\n        "hint": "Provide the translation in Mandarin Chinese."\n      }\n    }\n  }\n}
+{
+  "key_translations": {
+    "description": "字段映射配置",
+    "type": "object",
+    "hint": "用于将 API 返回的字段名映射为更友好的显示名称",
+    "items": {
+      "code": {
+        "description": "状态码",
+        "type": "string",
+        "default": "状态码"
+      },
+      "msg": {
+        "description": "消息",
+        "type": "string",
+        "default": "消息"
+      },
+      "data": {
+        "description": "数据",
+        "type": "string",
+        "default": "数据"
+      },
+      "domain": {
+        "description": "域名",
+        "type": "string",
+        "default": "🌐 域名"
+      },
+      "extension": {
+        "description": "后缀",
+        "type": "string",
+        "default": "📂 后缀"
+      },
+      "registrar": {
+        "description": "注册商",
+        "type": "string",
+        "default": "🏢 注册商"
+      },
+      "creation_date": {
+        "description": "创建日期",
+        "type": "string",
+        "default": "📅 创建日期"
+      },
+      "created_date": {
+        "description": "创建日期",
+        "type": "string",
+        "default": "📅 创建日期"
+      },
+      "created_date_in_time": {
+        "description": "创建时间(UTC)",
+        "type": "string",
+        "default": "🕒 创建时间(UTC)"
+      },
+      "expiration_date": {
+        "description": "过期日期",
+        "type": "string",
+        "default": "📅 过期日期"
+      },
+      "expiration_date_in_time": {
+        "description": "过期时间(UTC)",
+        "type": "string",
+        "default": "🕒 过期时间(UTC)"
+      },
+      "updated_date": {
+        "description": "更新日期",
+        "type": "string",
+        "default": "📅 更新日期"
+      },
+      "updated_date_in_time": {
+        "description": "更新时间(UTC)",
+        "type": "string",
+        "default": "🕒 更新时间(UTC)"
+      },
+      "status": {
+        "description": "状态",
+        "type": "string",
+        "default": "📊 状态"
+      },
+      "name_servers": {
+        "description": "DNS服务器",
+        "type": "string",
+        "default": "🖥️ DNS服务器"
+      },
+      "emails": {
+        "description": "联系邮箱",
+        "type": "string",
+        "default": "📧 联系邮箱"
+      },
+      "dnssec": {
+        "description": "DNSSEC",
+        "type": "string",
+        "default": "🔒 DNSSEC"
+      },
+      "name": {
+        "description": "名称",
+        "type": "string",
+        "default": "👤 名称"
+      },
+      "org": {
+        "description": "组织",
+        "type": "string",
+        "default": "🏢 组织"
+      },
+      "address": {
+        "description": "地址",
+        "type": "string",
+        "default": "📍 地址"
+      },
+      "street": {
+        "description": "街道",
+        "type": "string",
+        "default": "🛣️ 街道"
+      },
+      "city": {
+        "description": "城市",
+        "type": "string",
+        "default": "🏙️ 城市"
+      },
+      "state": {
+        "description": "省/州",
+        "type": "string",
+        "default": "🗺️ 省/州"
+      },
+      "province": {
+        "description": "省/州",
+        "type": "string",
+        "default": "🗺️ 省/州"
+      },
+      "zipcode": {
+        "description": "邮编",
+        "type": "string",
+        "default": "📮 邮编"
+      },
+      "postal_code": {
+        "description": "邮编",
+        "type": "string",
+        "default": "📮 邮编"
+      },
+      "country": {
+        "description": "国家",
+        "type": "string",
+        "default": "🇨🇳 国家"
+      },
+      "whois_server": {
+        "description": "Whois服务器",
+        "type": "string",
+        "default": "🖥️ Whois服务器"
+      },
+      "phone": {
+        "description": "电话",
+        "type": "string",
+        "default": "📞 电话"
+      },
+      "email": {
+        "description": "邮箱",
+        "type": "string",
+        "default": "📧 邮箱"
+      },
+      "referral_url": {
+        "description": "相关链接",
+        "type": "string",
+        "default": "🔗 相关链接"
+      },
+      "registrant": {
+        "description": "注册人信息",
+        "type": "string",
+        "default": "👤 注册人信息"
+      },
+      "admin": {
+        "description": "管理员信息",
+        "type": "string",
+        "default": "👮 管理员信息"
+      },
+      "technical": {
+        "description": "技术联系人",
+        "type": "string",
+        "default": "🔧 技术联系人"
+      },
+      "billing": {
+        "description": "账单联系人",
+        "type": "string",
+        "default": "💰 账单联系人"
+      },
+      "organization": {
+        "description": "组织",
+        "type": "string",
+        "default": "🏢 组织"
+      },
+      "host": {
+        "description": "主机",
+        "type": "string",
+        "default": "🖥️ 主机"
+      },
+      "type": {
+        "description": "类型",
+        "type": "string"，
+        "default": "🏷️ 类型"
+      },
+      "ttl": {
+        "description": "TTL",
+        "type": "string",
+        "default": "⏲️ TTL"
+      },
+      "class": {
+        "description": "类别",
+        "type": "string",
+        "default": "📂 类别"
+      },
+      "target": {
+        "description": "目标",
+        "type": "string",
+        "default": "🎯 目标"
+      },
+      "priority": {
+        "description": "优先级",
+        "type": "string",
+        "default": "🔝 优先级"
+      },
+      "ip": {
+        "description": "IP地址",
+        "type": "string",
+        "default": "📍 IP地址"
+      },
+      "location": {
+        "description": "归属地",
+        "type": "string",
+        "default": "🌍 归属地"
+      },
+      "loss": {
+        "description": "丢包率",
+        "type": "string",
+        "default": "📉 丢包率"
+      },
+      "sent": {
+        "description": "发送包数",
+        "type": "string",
+        "default": "📤 发送包数"
+      },
+      "received": {
+        "description": "接收包数",
+        "type": "string",
+        "default": "📥 接收包数"
+      },
+      "seq": {
+        "description": "序列号",
+        "type": "string",
+        "default": "🔢 序列号"
+      }
+    }
+  },
+  "timeout": {
+    "description": "请求超时时间",
+    "type": "int",
+    "hint": "单位：秒",
+    "default": 10
+  }
+}
