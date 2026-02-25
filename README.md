@@ -32,4 +32,4 @@ AstrBot 的网络工具插件，使用 Uapi 提供 WHOIS 查询、DNS 查询及 
 ## 鸣谢
 
 - [Uapi](https://uapis.cn) 提供 API 支持
-- Trea提供的免费AI编程
+- Trae提供的免费AI编程
