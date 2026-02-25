@@ -9,69 +9,72 @@ from astrbot.api.star import Context, Star
 from astrbot.api.message_components import Node, Plain
 
 class UapiToolsPlugin(Star):
+    KEY_TRANSLATIONS = {
+        # Common
+        "code": "状态码",
+        "msg": "消息",
+        "data": "数据",
+        # WHOIS
+        "domain": "🌐 域名",
+        "extension": "📂 后缀",
+        "registrar": "🏢 注册商",
+        "creation_date": "📅 创建日期",
+        "created_date": "📅 创建日期",
+        "created_date_in_time": "🕒 创建时间(UTC)",
+        "expiration_date": "📅 过期日期",
+        "expiration_date_in_time": "🕒 过期时间(UTC)",
+        "updated_date": "📅 更新日期",
+        "updated_date_in_time": "🕒 更新时间(UTC)",
+        "status": "📊 状态",
+        "name_servers": "🖥️ DNS服务器",
+        "emails": "📧 联系邮箱",
+        "dnssec": "🔒 DNSSEC",
+        "name": "👤 名称",
+        "org": "🏢 组织",
+        "address": "📍 地址",
+        "street": "🛣️ 街道",
+        "city": "🏙️ 城市",
+        "state": "🗺️ 省/州",
+        "province": "🗺️ 省/州",
+        "zipcode": "📮 邮编",
+        "postal_code": "📮 邮编",
+        "country": "🇨🇳 国家",
+        "whois_server": "🖥️ Whois服务器",
+        "phone": "📞 电话",
+        "email": "📧 邮箱",
+        "referral_url": "🔗 相关链接",
+        "registrant": "👤 注册人信息",
+        "admin": "👮 管理员信息",
+        "technical": "🔧 技术联系人",
+        "billing": "💰 账单联系人",
+        "organization": "🏢 组织",
+        
+        # DNS
+        "host": "🖥️ 主机",
+        "type": "🏷️ 类型",
+        "ttl": "⏲️ TTL",
+        "class": "📂 类别",
+        "target": "🎯 目标",
+        "priority": "🔝 优先级",
+        
+        # Ping
+        "ip": "📍 IP地址",
+        "location": "🌍 归属地",
+        "loss": "📉 丢包率",
+        "sent": "📤 发送包数",
+        "received": "📥 接收包数",
+        "seq": "🔢 序列号"
+    }
+
+    TIMEOUT = 10  # Seconds
+
     def __init__(self, context: Context):
         super().__init__(context)
         self.client = UapiClient("https://uapis.cn")
-        self.KEY_TRANSLATIONS = {
-            # Common
-            "code": "状态码",
-            "msg": "消息",
-            "data": "数据",
-            # WHOIS
-            "domain": "🌐 域名",
-            "extension": "📂 后缀",
-            "registrar": "🏢 注册商",
-            "creation_date": "📅 创建日期",
-            "created_date": "📅 创建日期",
-            "created_date_in_time": "🕒 创建时间(UTC)",
-            "expiration_date": "📅 过期日期",
-            "expiration_date_in_time": "🕒 过期时间(UTC)",
-            "updated_date": "📅 更新日期",
-            "updated_date_in_time": "🕒 更新时间(UTC)",
-            "status": "📊 状态",
-            "name_servers": "🖥️ DNS服务器",
-            "emails": "📧 联系邮箱",
-            "dnssec": "🔒 DNSSEC",
-            "name": "👤 名称",
-            "org": "🏢 组织",
-            "address": "📍 地址",
-            "street": "🛣️ 街道",
-            "city": "🏙️ 城市",
-            "state": "🗺️ 省/州",
-            "province": "🗺️ 省/州",
-            "zipcode": "📮 邮编",
-            "postal_code": "📮 邮编",
-            "country": "🇨🇳 国家",
-            "whois_server": "🖥️ Whois服务器",
-            "phone": "📞 电话",
-            "email": "📧 邮箱",
-            "referral_url": "🔗 相关链接",
-            "registrant": "👤 注册人信息",
-            "admin": "👮 管理员信息",
-            "technical": "🔧 技术联系人",
-            "billing": "💰 账单联系人",
-            "organization": "🏢 组织",
-            
-            # DNS
-            "host": "🖥️ 主机",
-            "type": "🏷️ 类型",
-            "ttl": "⏲️ TTL",
-            "class": "📂 类别",
-            "target": "🎯 目标",
-            "priority": "🔝 优先级",
-            
-            # Ping
-            "ip": "📍 IP地址",
-            "location": "🌍 归属地",
-            "loss": "📉 丢包率",
-            "sent": "📤 发送包数",
-            "received": "📥 接收包数",
-            "seq": "🔢 序列号"
-        }
 
     # ---------------- WHOIS ----------------
     @filter.command("whois")
-    async def whois_cmd(self, event: AstrMessageEvent, domain: str):
+    async def whois_cmd(self, event: AstrMessageEvent, domain: str = ""):
         '''查询域名 WHOIS 信息'''
         if not domain:
             yield event.plain_result("请输入域名，例如：/whois google.com")
@@ -86,6 +89,7 @@ class UapiToolsPlugin(Star):
             )
             yield MessageEventResult(message_chain=[node])
         except Exception:
+            # Fallback to plain text if forward message fails (e.g. not supported by adapter)
             yield event.plain_result(result)
 
     @filter.llm_tool(name="get_whois")
@@ -107,7 +111,7 @@ class UapiToolsPlugin(Star):
                 if key in ["min", "avg", "max", "mdev", "time", "id", "punycode"] or value is None or value == "":
                     continue
                     
-                translated_key = self.KEY_TRANSLATIONS.get(key, key)
+                translated_key = self.KEY_TRANSLATIONS.get(key.lower(), key)
                 if isinstance(value, (dict, list)):
                     lines.append(f"{spacing}{translated_key}:")
                     lines.append(self._format_data(value, indent + 1))
@@ -153,8 +157,13 @@ class UapiToolsPlugin(Star):
     async def _get_whois(self, domain: str) -> str:
         try:
             # Run in thread to avoid blocking
-            result = await asyncio.to_thread(self.client.network.get_network_whois, domain=domain, format="json")
+            result = await asyncio.wait_for(
+                asyncio.to_thread(self.client.network.get_network_whois, domain=domain, format="json"),
+                timeout=self.TIMEOUT
+            )
             return self._process_result(result, f"🔍 WHOIS 查询结果 ({domain}):")
+        except asyncio.TimeoutError:
+            return f"❌ 请求超时，请稍后重试。"
         except UapiError as exc:
             return f"API error: {exc}"
         except Exception as e:
@@ -162,7 +171,7 @@ class UapiToolsPlugin(Star):
 
     # ---------------- DNS ----------------
     @filter.command("DNS")
-    async def dns_cmd(self, event: AstrMessageEvent, domain: str):
+    async def dns_cmd(self, event: AstrMessageEvent, domain: str = ""):
         '''查询域名 DNS 解析记录'''
         if not domain:
             yield event.plain_result("请输入域名，例如：/DNS cn.bing.com")
@@ -182,8 +191,13 @@ class UapiToolsPlugin(Star):
 
     async def _get_dns(self, domain: str, record_type: str = "A") -> str:
         try:
-            result = await asyncio.to_thread(self.client.network.get_network_dns, domain=domain, type=record_type)
+            result = await asyncio.wait_for(
+                asyncio.to_thread(self.client.network.get_network_dns, domain=domain, type=record_type),
+                timeout=self.TIMEOUT
+            )
             return self._process_result(result, f"🌐 DNS 解析记录 ({domain} - {record_type}):")
+        except asyncio.TimeoutError:
+            return f"❌ 请求超时，请稍后重试。"
         except UapiError as exc:
             return f"API error: {exc}"
         except Exception as e:
@@ -192,7 +206,7 @@ class UapiToolsPlugin(Star):
 
     # ---------------- Ping ----------------
     @filter.command("ping")
-    async def ping_cmd(self, event: AstrMessageEvent, host: str):
+    async def ping_cmd(self, event: AstrMessageEvent, host: str = ""):
         '''Ping 主机'''
         if not host:
             yield event.plain_result("请输入主机名或 IP，例如：/ping cn.bing.com")
@@ -211,8 +225,13 @@ class UapiToolsPlugin(Star):
 
     async def _ping_host(self, host: str) -> str:
         try:
-            result = await asyncio.to_thread(self.client.network.get_network_ping, host=host)
+            result = await asyncio.wait_for(
+                asyncio.to_thread(self.client.network.get_network_ping, host=host),
+                timeout=self.TIMEOUT
+            )
             return self._process_result(result, f"📶 Ping 检测结果 ({host}):")
+        except asyncio.TimeoutError:
+            return f"❌ 请求超时，请稍后重试。"
         except UapiError as exc:
             return f"API error: {exc}"
         except Exception as e:
