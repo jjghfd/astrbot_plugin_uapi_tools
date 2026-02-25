@@ -19,9 +19,26 @@ class UapiToolsPlugin(Star):
         # 从配置中获取字段映射，默认为空字典
         self.key_translations = config.get("key_translations", {})
         # 从配置中获取超时时间，默认为10秒
-        self.timeout = config.get("timeout", 10)
+        timeout = config.get("timeout", 10)
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            logger.warning(f"Invalid timeout value: {timeout}, using default 10")
+            timeout = 10
+        self.timeout = timeout
         # 添加并发控制信号量，限制最大并发请求数
         self.semaphore = asyncio.Semaphore(10)
+
+    async def close(self):
+        """清理资源"""
+        # 如果有需要关闭的连接
+        pass
+
+    async def __aenter__(self):
+        """异步上下文管理器进入方法"""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """异步上下文管理器退出方法"""
+        await self.close()
 
     # ---------------- WHOIS ----------------
     async def send_forward_message(
@@ -159,8 +176,11 @@ class UapiToolsPlugin(Star):
         # 使用信号量控制并发
         async with self.semaphore:
             try:
+                # 确保使用正确的参数传递方式
                 result = await asyncio.wait_for(
-                    asyncio.to_thread(func, *args, **kwargs),
+                    asyncio.to_thread(
+                        lambda: func(*args, **kwargs)
+                    ),  # 使用 lambda 确保正确传递
                     timeout=self.timeout,
                 )
                 return result, ""
@@ -179,8 +199,27 @@ class UapiToolsPlugin(Star):
                 )
                 return None, "❌ 发生内部错误，请联系管理员。"
 
+    async def _execute_async_request_with_retry(
+        self, func, max_retries=3, *args, **kwargs
+    ) -> Tuple[Optional[Any], str]:
+        """带重试机制的异步请求执行器"""
+        for attempt in range(max_retries):
+            result, error = await self._execute_async_request(func, *args, **kwargs)
+            if not error:
+                return result, error
+            if attempt < max_retries - 1:
+                logger.info(
+                    f"Request failed, retrying {attempt + 1}/{max_retries - 1}..."
+                )
+                await asyncio.sleep(1 * (attempt + 1))  # 退避策略
+        return None, "请求失败，已达最大重试次数"
+
     def _process_result(self, result, title):
         """Helper to process API result and extract data if possible."""
+        # 处理空结果
+        if not result:
+            return f"{title}\n暂无数据"
+
         if isinstance(result, dict):
             # Check for standard API response structure: code, msg, data
             if "code" in result:
@@ -192,8 +231,10 @@ class UapiToolsPlugin(Star):
                     else:
                         return f"{title}\n暂无数据"
                 else:
-                    msg = result.get("msg", "未知错误")
-                    return f"❌ 请求失败: {msg} (Code: {code})"
+                    # 更友好的错误信息
+                    error_msg = result.get("msg", "未知错误")
+                    error_code = result.get("code", "N/A")
+                    return f"❌ {title}\n错误代码: {error_code}\n错误信息: {error_msg}"
 
             # If structure is unknown, print the whole dict
             return f"{title}\n" + self._format_data(result)
@@ -209,8 +250,8 @@ class UapiToolsPlugin(Star):
         if not valid:
             return error_msg
 
-        # 执行异步请求
-        result, error_msg = await self._execute_async_request(
+        # 执行异步请求（带重试机制）
+        result, error_msg = await self._execute_async_request_with_retry(
             self.client.network.get_network_whois, domain=domain, format="json"
         )
         if error_msg:
@@ -223,15 +264,20 @@ class UapiToolsPlugin(Star):
 
     # ---------------- DNS ----------------
     @filter.command("DNS", alias=["dns"])
-    async def dns_cmd(self, event: AstrMessageEvent, domain: str = ""):
+    async def dns_cmd(
+        self, event: AstrMessageEvent, domain: str = "", record_type: str = "A"
+    ):
         """查询域名 DNS 解析记录"""
         if not domain:
             yield event.plain_result(
-                "请输入域名，例如：/DNS cn.bing.com 或 /dns cn.bing.com"
+                "请输入域名，例如：/DNS cn.bing.com A 或 /dns cn.bing.com A"
             )
             return
-        result = await self._get_dns(domain)
-        yield event.plain_result(result)
+        result = await self._get_dns(domain, record_type)
+
+        # 调用发送转发消息的方法
+        async for msg in self.send_forward_message(event, result, "DNS查询结果"):
+            yield msg
 
     @filter.llm_tool(name="get_dns")
     async def get_dns(
@@ -252,12 +298,24 @@ class UapiToolsPlugin(Star):
             return error_msg
 
         # Validate record_type
-        valid_record_types = ["A", "AAAA", "CNAME", "MX", "TXT", "NS"]
+        valid_record_types = [
+            "A",
+            "AAAA",
+            "CNAME",
+            "MX",
+            "TXT",
+            "NS",
+            "SOA",
+            "PTR",
+            "SRV",
+            "CAA",
+            "NAPTR",
+        ]
         if record_type.upper() not in valid_record_types:
             return f"❌ 不支持的记录类型。支持的记录类型：{', '.join(valid_record_types)}。"
 
-        # 执行异步请求，统一使用大写记录类型
-        result, error_msg = await self._execute_async_request(
+        # 执行异步请求（带重试机制），统一使用大写记录类型
+        result, error_msg = await self._execute_async_request_with_retry(
             self.client.network.get_network_dns, domain=domain, type=record_type.upper()
         )
         if error_msg:
@@ -278,7 +336,10 @@ class UapiToolsPlugin(Star):
             yield event.plain_result("请输入主机名或 IP，例如：/ping cn.bing.com")
             return
         result = await self._ping_host(host)
-        yield event.plain_result(result)
+
+        # 调用发送转发消息的方法
+        async for msg in self.send_forward_message(event, result, "Ping检测结果"):
+            yield msg
 
     @filter.llm_tool(name="ping_host")
     async def ping_host(self, event: AstrMessageEvent, host: str):
@@ -295,8 +356,8 @@ class UapiToolsPlugin(Star):
         if not valid:
             return error_msg
 
-        # 执行异步请求
-        result, error_msg = await self._execute_async_request(
+        # 执行异步请求（带重试机制）
+        result, error_msg = await self._execute_async_request_with_retry(
             self.client.network.get_network_ping, host=host
         )
         if error_msg:
@@ -304,3 +365,17 @@ class UapiToolsPlugin(Star):
             return error_msg
 
         return self._process_result(result, f"📶 Ping 检测结果 ({host}):")
+
+    # ---------------- Help ----------------
+    @filter.command("help", alias=["h", "?"])
+    async def help_cmd(self, event: AstrMessageEvent):
+        """查看帮助信息"""
+        help_text = """
+🔍 可用命令：
+/whois <domain> - 查询域名 WHOIS 信息，例如：/whois google.com
+/dns <domain> [record_type] - 查询域名 DNS 解析记录，例如：/dns cn.bing.com A
+  支持的记录类型：A, AAAA, CNAME, MX, TXT, NS, SOA, PTR, SRV, CAA, NAPTR
+/ping <host> - Ping 主机检测连通性，例如：/ping cn.bing.com
+/help - 查看此帮助信息
+        """
+        yield event.plain_result(help_text)
