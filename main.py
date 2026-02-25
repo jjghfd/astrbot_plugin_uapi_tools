@@ -1,12 +1,13 @@
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
-from astrbot.api.star import Context, Star, register
-from astrbot.api import logger
+import asyncio
+import json
+
 from uapi import UapiClient
 from uapi.errors import UapiError
-import json
-import asyncio
 
-@register("astrbot_plugin_uapi_tools", "NOI_zl", "使用公共API：UAPI执行ping DNS whois查询 感谢Trea 国际版", "1.0.0", "https://github.com/jjghfd/astrbot_plugin_uapi_tools")
+from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
+from astrbot.api.star import Context, Star
+from astrbot.api.message_components import Node, Plain
+
 class UapiToolsPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -78,8 +79,6 @@ class UapiToolsPlugin(Star):
         result = await self._get_whois(domain)
         
         try:
-            from astrbot.api.message_components import Node, Plain
-            
             node = Node(
                 uin=event.message_obj.self_id,
                 name="Whois查询结果",
@@ -202,22 +201,6 @@ class UapiToolsPlugin(Star):
         yield event.plain_result(result)
 
     @filter.llm_tool(name="ping_host")
-    async def ping_host(self, event: AstrMessageEvent, host: str):
-        '''Ping 主机检测连通性。
-        
-        Args:
-            host (str): 域名或 IP 地址
-        '''
-        return await self._ping_host(host)
-
-    async def _ping_host(self, host: str) -> str:
-        try:
-            result = await asyncio.to_thread(self.client.network.get_network_ping, host=host)
-            return self._process_result(result, f"📶 Ping 检测结果 ({host}):")
-        except UapiError as exc:
-            return f"API error: {exc}"
-        except Exception as e:
-            return f"Error: {e}"
     async def ping_host(self, event: AstrMessageEvent, host: str):
         '''Ping 主机检测连通性。
         
