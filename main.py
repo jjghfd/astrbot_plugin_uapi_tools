@@ -1,9 +1,10 @@
 import asyncio
+from typing import Any, Tuple, Optional
 
 from uapi import UapiClient
 from uapi.errors import UapiError
 
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
+from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api.message_components import Node, Plain
 from astrbot.api import logger
@@ -19,6 +20,8 @@ class UapiToolsPlugin(Star):
         self.key_translations = config.get("key_translations", {})
         # 从配置中获取超时时间，默认为10秒
         self.timeout = config.get("timeout", 10)
+        # 添加并发控制信号量，限制最大并发请求数
+        self.semaphore = asyncio.Semaphore(10)
 
     # ---------------- WHOIS ----------------
     async def send_forward_message(
@@ -72,15 +75,16 @@ class UapiToolsPlugin(Star):
         if isinstance(data, dict):
             lines = []
             for key, value in data.items():
+                key_l = key.lower()
                 # Skip ping delay/latency related fields, empty/null values, and punycode
                 if (
-                    key in ["min", "avg", "max", "mdev", "time", "id", "punycode"]
+                    key_l in ["min", "avg", "max", "mdev", "time", "id", "punycode"]
                     or value is None
                     or value == ""
                 ):
                     continue
 
-                translated_key = self.key_translations.get(key.lower(), key)
+                translated_key = self.key_translations.get(key_l, key)
                 if isinstance(value, (dict, list)):
                     lines.append(f"{spacing}{translated_key}:")
                     lines.append(self._format_data(value, indent + 1))
@@ -99,35 +103,81 @@ class UapiToolsPlugin(Star):
         else:
             return f"{spacing}{data}"
 
-    def _validate_domain(self, domain: str) -> tuple[bool, str]:
+    def _validate_domain(self, domain: str) -> Tuple[bool, str]:
         """验证域名合法性"""
         if not domain:
             return False, "❌ 请输入有效的域名或 IP 地址。"
-        # 基础的域名格式校验
+
+        # 验证 IP 地址
+        try:
+            import ipaddress
+
+            # 尝试解析为 IPv4 或 IPv6
+            ipaddress.ip_address(domain)
+            return True, ""
+        except ValueError:
+            # 不是有效的 IP 地址，尝试验证为域名
+            pass
+
+        # 验证域名
         import re
 
+        # 域名基本格式校验
         domain_pattern = r"^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$"
-        ip_pattern = r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"
-        if not (re.match(domain_pattern, domain) or re.match(ip_pattern, domain)):
+        if not re.match(domain_pattern, domain):
             return False, "❌ 请输入有效的域名或 IP 地址。"
+
+        # 检查域名长度和标签
+        labels = domain.split(".")
+        for label in labels:
+            if len(label) > 63:
+                return False, "❌ 域名标签长度不能超过 63 个字符。"
+
+        if len(domain) > 253:
+            return False, "❌ 域名总长度不能超过 253 个字符。"
+
         return True, ""
 
-    async def _execute_async_request(self, func, *args, **kwargs) -> tuple[any, str]:
+    async def _execute_async_request(
+        self, func, *args, **kwargs
+    ) -> Tuple[Optional[Any], str]:
         """通用的异步请求执行器"""
-        try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(func, *args, **kwargs),
-                timeout=self.timeout,
-            )
-            return result, ""
-        except asyncio.TimeoutError:
-            return None, "❌ 请求超时，请稍后重试。"
-        except UapiError as exc:
-            logger.error(f"UAPI error: {exc}")
-            return None, "❌ 请求失败，请检查输入参数或稍后重试。"
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}", exc_info=True)
-            return None, "❌ 发生内部错误，请联系管理员。"
+        # 获取函数名和参数信息，用于更详细的日志记录
+        func_name = getattr(func, "__name__", str(func))
+        params_info = {}
+        if kwargs:
+            params_info.update(kwargs)
+        if args:
+            # 尝试从位置参数中提取有意义的信息
+            for i, arg in enumerate(args):
+                if isinstance(arg, str) and (
+                    "domain" in func_name.lower() or "host" in func_name.lower()
+                ):
+                    params_info["target"] = arg
+                    break
+
+        # 使用信号量控制并发
+        async with self.semaphore:
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(func, *args, **kwargs),
+                    timeout=self.timeout,
+                )
+                return result, ""
+            except asyncio.TimeoutError:
+                logger.warning(f"Request timed out: {func_name}, params: {params_info}")
+                return None, "❌ 请求超时，请稍后重试。"
+            except UapiError as exc:
+                logger.error(
+                    f"UAPI error: {func_name}, params: {params_info}, error: {exc}"
+                )
+                return None, "❌ 请求失败，请检查输入参数或稍后重试。"
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error: {func_name}, params: {params_info}, error: {e}",
+                    exc_info=True,
+                )
+                return None, "❌ 发生内部错误，请联系管理员。"
 
     def _process_result(self, result, title):
         """Helper to process API result and extract data if possible."""
@@ -206,9 +256,9 @@ class UapiToolsPlugin(Star):
         if record_type.upper() not in valid_record_types:
             return f"❌ 不支持的记录类型。支持的记录类型：{', '.join(valid_record_types)}。"
 
-        # 执行异步请求
+        # 执行异步请求，统一使用大写记录类型
         result, error_msg = await self._execute_async_request(
-            self.client.network.get_network_dns, domain=domain, type=record_type
+            self.client.network.get_network_dns, domain=domain, type=record_type.upper()
         )
         if error_msg:
             logger.warning(
