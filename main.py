@@ -52,7 +52,15 @@ class UapiToolsPlugin(Star):
         except Exception as e:
             logger.error(f"Failed to send forward message: {e}")
             # Fallback to plain text if forward message fails (e.g. not supported by adapter)
-            yield event.plain_result(content)
+            try:
+                yield event.plain_result(content)
+                logger.info("Fallback to plain text message successful")
+            except Exception as fallback_e:
+                logger.error(
+                    f"Failed to send fallback plain text message: {fallback_e}"
+                )
+                # 静默处理回退失败，避免协程崩溃
+                pass
 
     @filter.command("whois")
     async def whois_cmd(self, event: AstrMessageEvent, domain: str = ""):
@@ -75,25 +83,25 @@ class UapiToolsPlugin(Star):
         """
         return await self._get_whois(domain)
 
-    def _format_data(self, data, indent=0):
+    def _format_data(self, data, indent=0, exclude_keys=None):
         """Recursively format data into a readable string."""
         spacing = "  " * indent
+        # 默认排除的键
+        default_exclude = ["min", "avg", "max", "mdev", "time", "id", "punycode"]
+        exclude = default_exclude if exclude_keys is None else exclude_keys
+
         if isinstance(data, dict):
             lines = []
             for key, value in data.items():
                 key_l = key.lower()
-                # Skip ping delay/latency related fields, empty/null values, and punycode
-                if (
-                    key_l in ["min", "avg", "max", "mdev", "time", "id", "punycode"]
-                    or value is None
-                    or value == ""
-                ):
+                # Skip excluded fields, empty/null values
+                if key_l in exclude or value is None or value == "":
                     continue
 
                 translated_key = self.key_translations.get(key_l, key)
                 if isinstance(value, (dict, list)):
                     lines.append(f"{spacing}{translated_key}:")
-                    lines.append(self._format_data(value, indent + 1))
+                    lines.append(self._format_data(value, indent + 1, exclude))
                 else:
                     lines.append(f"{spacing}{translated_key}: {value}")
             return "\n".join(lines)
@@ -102,7 +110,7 @@ class UapiToolsPlugin(Star):
             for index, item in enumerate(data):
                 if isinstance(item, (dict, list)):
                     lines.append(f"{spacing}- 项目 {index + 1}:")
-                    lines.append(self._format_data(item, indent + 1))
+                    lines.append(self._format_data(item, indent + 1, exclude))
                 else:
                     lines.append(f"{spacing}- {item}")
             return "\n".join(lines)
@@ -123,20 +131,21 @@ class UapiToolsPlugin(Star):
             # 不是有效的 IP 地址，尝试验证为域名
             pass
 
-        # 验证域名
-        # 域名基本格式校验，修复边界条件，允许单字符主机名
-        domain_pattern = r"^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
-        if not re.match(domain_pattern, domain):
-            return False, "❌ 请输入有效的域名或 IP 地址。"
+        # 先检查域名长度，防止 ReDoS 攻击
+        if len(domain) > 253:
+            return False, "❌ 域名总长度不能超过 253 个字符。"
 
-        # 检查域名长度和标签
+        # 检查标签长度
         labels = domain.split(".")
         for label in labels:
             if len(label) > 63:
                 return False, "❌ 域名标签长度不能超过 63 个字符。"
 
-        if len(domain) > 253:
-            return False, "❌ 域名总长度不能超过 253 个字符。"
+        # 验证域名格式
+        # 域名基本格式校验，修复边界条件，允许单字符主机名
+        domain_pattern = r"^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
+        if not re.match(domain_pattern, domain):
+            return False, "❌ 请输入有效的域名或 IP 地址。"
 
         return True, ""
 
@@ -366,18 +375,14 @@ class UapiToolsPlugin(Star):
 
     # ---------------- Help ----------------
     @filter.command("uapi")
-    async def help_cmd(self, event: AstrMessageEvent, subcommand: str = "help"):
+    async def help_cmd(self, event: AstrMessageEvent):
         """查看帮助信息"""
-        if subcommand != "help":
-            yield event.plain_result("请使用 /uapi help 查看帮助信息")
-            return
-
         help_text = """
 🔍 UAPI 工具命令：
 /whois <domain> - 查询域名 WHOIS 信息，例如：/whois google.com
 /dns <domain> [record_type] - 查询域名 DNS 解析记录，例如：/dns cn.bing.com A
   支持的记录类型：A, AAAA, CNAME, MX, TXT, NS, SOA, PTR, SRV, CAA, NAPTR
 /ping <host> - Ping 主机检测连通性，例如：/ping cn.bing.com
-/uapi help - 查看此帮助信息
+/uapi - 查看此帮助信息
         """
         yield event.plain_result(help_text)
