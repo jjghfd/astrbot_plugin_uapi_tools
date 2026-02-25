@@ -1,6 +1,6 @@
 name: astrbot_plugin_uapi_tools
-desc: "使用 Uapi 提供 WHOIS 查询、DNS 查询及 Ping 检测功能"
+desc: "使用公共API：UAPI执行ping DNS whois查询 感谢Trea 国际版"
 help: "使用 /whois, /DNS, /ping 命令"
 version: "1.0.0"
-author: "Assistant"
+author: "NOI_zl"
 repo: "https://github.com/jjghfd/astrbot_plugin_uapi_tools"
