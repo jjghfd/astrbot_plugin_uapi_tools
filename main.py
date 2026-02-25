@@ -1,4 +1,6 @@
 import asyncio
+import re
+import ipaddress
 from typing import Any, Tuple, Optional
 
 from uapi import UapiClient
@@ -26,19 +28,6 @@ class UapiToolsPlugin(Star):
         self.timeout = timeout
         # 添加并发控制信号量，限制最大并发请求数
         self.semaphore = asyncio.Semaphore(10)
-
-    async def close(self):
-        """清理资源"""
-        # 如果有需要关闭的连接
-        pass
-
-    async def __aenter__(self):
-        """异步上下文管理器进入方法"""
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """异步上下文管理器退出方法"""
-        await self.close()
 
     # ---------------- WHOIS ----------------
     async def send_forward_message(
@@ -127,8 +116,6 @@ class UapiToolsPlugin(Star):
 
         # 验证 IP 地址
         try:
-            import ipaddress
-
             # 尝试解析为 IPv4 或 IPv6
             ipaddress.ip_address(domain)
             return True, ""
@@ -137,10 +124,8 @@ class UapiToolsPlugin(Star):
             pass
 
         # 验证域名
-        import re
-
-        # 域名基本格式校验
-        domain_pattern = r"^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$"
+        # 域名基本格式校验，修复边界条件，允许单字符主机名
+        domain_pattern = r"^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
         if not re.match(domain_pattern, domain):
             return False, "❌ 请输入有效的域名或 IP 地址。"
 
@@ -203,15 +188,30 @@ class UapiToolsPlugin(Star):
         self, func, max_retries=3, *args, **kwargs
     ) -> Tuple[Optional[Any], str]:
         """带重试机制的异步请求执行器"""
+        # 只对超时错误等网络瞬时故障进行重试
+        retryable_errors = []
+
         for attempt in range(max_retries):
             result, error = await self._execute_async_request(func, *args, **kwargs)
             if not error:
                 return result, error
-            if attempt < max_retries - 1:
-                logger.info(
-                    f"Request failed, retrying {attempt + 1}/{max_retries - 1}..."
-                )
-                await asyncio.sleep(1 * (attempt + 1))  # 退避策略
+
+            # 检查是否是可重试的错误（这里通过错误消息判断，实际项目中可以通过异常类型判断）
+            if "超时" in error:
+                if attempt < max_retries - 1:
+                    logger.info(
+                        f"Request timed out, retrying {attempt + 1}/{max_retries - 1}..."
+                    )
+                    await asyncio.sleep(1 * (attempt + 1))  # 退避策略
+                    retryable_errors.append(error)
+                else:
+                    # 最后一次重试失败
+                    return None, error
+            else:
+                # 非可重试错误，直接返回
+                return None, error
+
+        # 所有重试都失败
         return None, "请求失败，已达最大重试次数"
 
     def _process_result(self, result, title):
