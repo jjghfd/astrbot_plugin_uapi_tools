@@ -6,7 +6,7 @@ from uapi.errors import UapiError
 import json
 import asyncio
 
-@register("astrbot_plugin_uapi_tools", "Assistant", "WHOIS/DNS/Ping plugin", "1.0.0", "https://github.com/AstrBot-Devs/astrbot_plugin_uapi_tools")
+@register("astrbot_plugin_uapi_tools", "NOI_zl", "使用公共API：UAPI执行ping DNS whois查询 感谢Trea 国际版", "1.0.0", "https://github.com/jjghfd/astrbot_plugin_uapi_tools")
 class UapiToolsPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
