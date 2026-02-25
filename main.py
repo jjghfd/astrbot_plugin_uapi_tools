@@ -99,6 +99,36 @@ class UapiToolsPlugin(Star):
         else:
             return f"{spacing}{data}"
 
+    def _validate_domain(self, domain: str) -> tuple[bool, str]:
+        """验证域名合法性"""
+        if not domain:
+            return False, "❌ 请输入有效的域名或 IP 地址。"
+        # 基础的域名格式校验
+        import re
+
+        domain_pattern = r"^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$"
+        ip_pattern = r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"
+        if not (re.match(domain_pattern, domain) or re.match(ip_pattern, domain)):
+            return False, "❌ 请输入有效的域名或 IP 地址。"
+        return True, ""
+
+    async def _execute_async_request(self, func, *args, **kwargs) -> tuple[any, str]:
+        """通用的异步请求执行器"""
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(func, *args, **kwargs),
+                timeout=self.timeout,
+            )
+            return result, ""
+        except asyncio.TimeoutError:
+            return None, "❌ 请求超时，请稍后重试。"
+        except UapiError as exc:
+            logger.error(f"UAPI error: {exc}")
+            return None, "❌ 请求失败，请检查输入参数或稍后重试。"
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}", exc_info=True)
+            return None, "❌ 发生内部错误，请联系管理员。"
+
     def _process_result(self, result, title):
         """Helper to process API result and extract data if possible."""
         if isinstance(result, dict):
@@ -124,34 +154,31 @@ class UapiToolsPlugin(Star):
         return f"{title}\n{result}"
 
     async def _get_whois(self, domain: str) -> str:
-        try:
-            # Run in thread to avoid blocking
-            result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.client.network.get_network_whois, domain=domain, format="json"
-                ),
-                timeout=self.timeout,
+        # 验证域名合法性
+        valid, error_msg = self._validate_domain(domain)
+        if not valid:
+            return error_msg
+
+        # 执行异步请求
+        result, error_msg = await self._execute_async_request(
+            self.client.network.get_network_whois, domain=domain, format="json"
+        )
+        if error_msg:
+            logger.warning(
+                f"WHOIS request failed for domain: {domain}, error: {error_msg}"
             )
-            return self._process_result(result, f"🔍 WHOIS 查询结果 ({domain}):")
-        except asyncio.TimeoutError:
-            logger.warning(f"WHOIS request timed out for domain: {domain}")
-            return "❌ 请求超时，请稍后重试。"
-        except UapiError as exc:
-            logger.error(f"UAPI WHOIS error for domain {domain}: {exc}")
-            return "❌ 请求失败，请检查域名或稍后重试。"
-        except Exception as e:
-            logger.error(
-                f"Unexpected error in WHOIS request for domain {domain}: {e}",
-                exc_info=True,
-            )
-            return "❌ 发生内部错误，请联系管理员。"
+            return error_msg
+
+        return self._process_result(result, f"🔍 WHOIS 查询结果 ({domain}):")
 
     # ---------------- DNS ----------------
-    @filter.command("DNS")
+    @filter.command("DNS", alias=["dns"])
     async def dns_cmd(self, event: AstrMessageEvent, domain: str = ""):
         """查询域名 DNS 解析记录"""
         if not domain:
-            yield event.plain_result("请输入域名，例如：/DNS cn.bing.com")
+            yield event.plain_result(
+                "请输入域名，例如：/DNS cn.bing.com 或 /dns cn.bing.com"
+            )
             return
         result = await self._get_dns(domain)
         yield event.plain_result(result)
@@ -169,41 +196,29 @@ class UapiToolsPlugin(Star):
         return await self._get_dns(domain, record_type)
 
     async def _get_dns(self, domain: str, record_type: str = "A") -> str:
-        # Validate domain format
-        if not domain or "." not in domain:
-            return "❌ 请输入有效的域名（例如：example.com）。"
+        # 验证域名合法性
+        valid, error_msg = self._validate_domain(domain)
+        if not valid:
+            return error_msg
 
         # Validate record_type
         valid_record_types = ["A", "AAAA", "CNAME", "MX", "TXT", "NS"]
         if record_type.upper() not in valid_record_types:
             return f"❌ 不支持的记录类型。支持的记录类型：{', '.join(valid_record_types)}。"
 
-        try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.client.network.get_network_dns, domain=domain, type=record_type
-                ),
-                timeout=self.timeout,
-            )
-            return self._process_result(
-                result, f"🔍 DNS 查询结果 ({domain}, 类型: {record_type}):"
-            )
-        except asyncio.TimeoutError:
+        # 执行异步请求
+        result, error_msg = await self._execute_async_request(
+            self.client.network.get_network_dns, domain=domain, type=record_type
+        )
+        if error_msg:
             logger.warning(
-                f"DNS request timed out for domain: {domain}, type: {record_type}"
+                f"DNS request failed for domain: {domain}, type: {record_type}, error: {error_msg}"
             )
-            return "❌ 请求超时，请稍后重试。"
-        except UapiError as exc:
-            logger.error(
-                f"UAPI DNS error for domain {domain}, type {record_type}: {exc}"
-            )
-            return "❌ 请求失败，请检查域名或记录类型。"
-        except Exception as e:
-            logger.error(
-                f"Unexpected error in DNS request for domain {domain}, type {record_type}: {e}",
-                exc_info=True,
-            )
-            return "❌ 发生内部错误，请联系管理员。"
+            return error_msg
+
+        return self._process_result(
+            result, f"🔍 DNS 查询结果 ({domain}, 类型: {record_type}):"
+        )
 
     # ---------------- Ping ----------------
     @filter.command("ping")
@@ -225,15 +240,17 @@ class UapiToolsPlugin(Star):
         return await self._ping_host(host)
 
     async def _ping_host(self, host: str) -> str:
-        try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(self.client.network.get_network_ping, host=host),
-                timeout=self.timeout,
-            )
-            return self._process_result(result, f"📶 Ping 检测结果 ({host}):")
-        except asyncio.TimeoutError:
-            return f"❌ 请求超时，请稍后重试。"
-        except UapiError as exc:
-            return f"API error: {exc}"
-        except Exception as e:
-            return f"Error: {e}"
+        # 验证主机合法性
+        valid, error_msg = self._validate_domain(host)
+        if not valid:
+            return error_msg
+
+        # 执行异步请求
+        result, error_msg = await self._execute_async_request(
+            self.client.network.get_network_ping, host=host
+        )
+        if error_msg:
+            logger.warning(f"Ping request failed for host: {host}, error: {error_msg}")
+            return error_msg
+
+        return self._process_result(result, f"📶 Ping 检测结果 ({host}):")
